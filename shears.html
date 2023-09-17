@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title></title>
+</head>
+<body>
+	<style>
+		#image {
+			width: 500px;
+			height: 500px;
+			background-size: 40px 40px;
+			background-image:
+				linear-gradient(to right, grey 1px, transparent 1px),
+				linear-gradient(to bottom, grey 1px, transparent 1px);
+			background-repeat: repeat;
+			background-position: 50% 50%;
+			--theta: 45deg;
+			--x-skew: 30deg;
+			--y-skew: -45deg;
+			animation: shears 5s infinite;
+		}
+		@keyframes shears {
+			from { transform:
+				rotate(0)
+				skewX(0)
+				skewY(0)
+				skewX(0); outline: 2px solid red; }
+			25% { transform:
+				rotate(0)
+				skewX(0)
+				skewY(0)
+				skewX(var(--x-skew)); outline: 2px solid green; }
+			50% { transform:
+				rotate(0)
+				skewX(0)
+				skewY(var(--y-skew))
+				skewX(var(--x-skew)); outline: 2px solid yellow; }
+			75% { transform:
+				rotate(0)
+				skewX(var(--x-skew))
+				skewY(var(--y-skew))
+				skewX(var(--x-skew)); outline: 2px solid blue; }
+			to { transform:
+				rotate(calc(0deg - var(--theta)))
+				skewX(var(--x-skew))
+				skewY(var(--y-skew))
+				skewX(var(--x-skew)); outline: 2px solid magenta; }
+		}
+	</style>
+	<div id="image"></div>
+	<script>
+		const theta = 45;
+		const rads = theta * Math.PI / 180;
+		const a = - Math.tan(rads / 2);
+		const b = Math.sin(rads);
+		const img = document.getElementById('image');
+		img.style.setProperty('--x-skew', Math.atan(a) + 'rad');
+		img.style.setProperty('--y-skew', Math.atan(b) + 'rad');
+		img.style.setProperty('--theta', theta + 'deg');
+	</script>
+</body>
+</html>
