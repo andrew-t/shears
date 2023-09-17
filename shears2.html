@@ -4,10 +4,46 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title></title>
+	<style type="text/css">
+		label {
+			display: flex;
+		}
+
+		label span {
+			flex: 0 0 10em;
+		}
+
+		label input {
+			flex: 1 0 1em;
+		}
+	</style>
 </head>
 <body>
 	<canvas id="canvas" width="500" height="500"></canvas>
+	<label id="theta">
+		<span>Angle</span>
+		<input id="theta-slider" type="range" min="-100" max="100">
+		<span id="theta-output"></span>
+	</label>
+	<label id="p">
+		<span>Lerp</span>
+		<input id="p-slider" type="range" min="0" max="100">
+		<span id="p-output"></span>
+	</label>
+	<label id="base-p">
+		<span>Global lerp</span>
+		<input id="base-p-slider" type="range" min="0" max="100">
+		<span id="theta-output"></span>
+	</label>
+	<label id="zoom">
+		<span>Zoom</span>
+		<input id="zoom-slider" type="range" min="0" max="100">
+		<span id="zoom-output"></span>
+	</label>
+
 	<script type="text/javascript">
+		const π = Math.PI;
+
 		function loadImage(fn) {
 			return new Promise((resolve, reject) => {
 				const img = new Image();
@@ -34,14 +70,14 @@
 			const context = canvas.getContext('2d');
 			context.drawImage(image, 0, 0);
 			const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-			console.log(canvas.width, canvas.height, data.length)
+			// console.log(canvas.width, canvas.height, data.length)
 			const pixels = [];
 			let i = 0;
 			for (let y = 0; y < canvas.height; ++y) {
 				const row = [];
 				pixels.push(row);
 				for (let x = 0; x < canvas.width; ++x) {
-					console.log(x, y, i)
+					// console.log(x, y, i)
 					row.push(col2hex(data[i++], data[i++], data[i++], data[i++]));
 				}
 			}
@@ -52,6 +88,7 @@
 			const d = pixelSize / 2;
 			pixels.forEach((row, y) =>
 				row.forEach((colour, x) => {
+					if (colour.endsWith('00')) return;
 					const pos = positioner({ x, y });
 					context.fillStyle = colour;
 					context.fillRect(pos.x - d, pos.y - d, pixelSize, pixelSize);
@@ -80,10 +117,29 @@
 			});
 		}
 
+		function scaleX(centreX, scale) {
+			return ({ x, y }) => ({
+				x: centreX + (x - centreX) * scale,
+				y
+			});
+		}
+		function scaleY(centreY, scale) {
+			return ({ x, y }) => ({
+				x,
+				y: centreY + (y - centreY) * scale
+			});
+		}
+
 		function roundX(offset, unit) {
 			return ({ x, y }) => ({
 				x: offset + unit * Math.floor((x - offset) / unit),
 				y
+			});
+		}
+		function roundY(offset, unit) {
+			return ({ x, y }) => ({
+				x,
+				y: offset + unit * Math.floor((y - offset) / unit)
 			});
 		}
 
@@ -128,6 +184,20 @@
 			return input => transforms.reduce((a, n) => n(a), input);
 		}
 
+		// -π < theta < π
+		function skew3(centreX, centreY, theta, unit) {
+			const a = Math.tan(theta / 2);
+			const b = -Math.sin(theta);
+			return stack(
+				skewX(centreX, a),
+				roundX(centreX, unit),
+				skewY(centreY, b),
+				roundY(centreY, unit),
+				skewX(centreX, a),
+				roundX(centreX, unit)
+			);
+		}
+
 		(async function() {
 			const image = await loadImage('mario');
 			const pix = img2pix(image);
@@ -148,10 +218,288 @@
 			// 	)
 			// ));
 
-			drawImage(context, pix, 15, stack(
-				scale(8, 250, 20),
-				rotate(250, 250, Math.PI / 6)
-			));
+			// drawImage(context, pix, 15, stack(
+			// 	scale(8, 250, 20),
+			// 	rotate(250, 250, π / 6)
+			// ));
+
+			// drawImage(context, pix, 15, stack(
+			// 	scale(8, 250, 20),
+			// 	skew3(250, 250, π / 6, 20)
+			// ));
+
+			const pSlider = document.getElementById('p-slider');
+			const basePSlider = document.getElementById('base-p-slider');
+			const thetaSlider = document.getElementById('theta-slider');
+			const zoomSlider = document.getElementById('zoom-slider');
+
+			function _draw() {
+				const theta = thetaSlider.value * π / 100;
+				context.clearRect(0, 0, 500, 500);
+				const pixSize = zoomSlider.value / 4,
+					pixScale = pixSize * 4 / 3;
+				document.getElementById("theta-output").innerHTML = `${theta / π}π`;
+				document.getElementById("p-output").innerHTML = pSlider.value / 100;
+				document.getElementById("base-p-output").innerHTML = basePSlider.value / 100;
+				document.getElementById("zoom-output").innerHTML = pixSize;
+				drawImage(context, pix, pixSize, stack(
+					scale(8, 250, pixScale),
+					lerp(
+						lerp2(
+							rotate(250, 250, theta),
+							skew3(250, 250, theta, pixScale),
+							pSlider.value / 100
+						),
+						basePSlider.value / 100
+					)
+				));
+			}
+
+			function _draw() {
+				document.getElementById("base-p").style.display = "none";
+				const theta = thetaSlider.value * π / 100;
+				context.clearRect(0, 0, 500, 500);
+				// steps:
+				// 1. break into rows
+				// 2. slide rows
+				// 3. recombine
+				// 4-6. same with columns
+				// 7-9. rows again
+				const pp = pSlider.value / (100 / 9);
+				const step = Math.floor(pp);
+				const p = pp % 1;
+				const pixSize = zoomSlider.value / 4,
+					pScale = pixSize;
+				const offset = 250;
+				const base = scale(8, offset, pScale);
+				const a = Math.tan(theta / 2);
+				const b = -Math.sin(theta);
+				document.getElementById("theta-output").innerHTML = `${theta / π}π`;
+				document.getElementById("p-output").innerHTML = step + p;
+				document.getElementById("zoom-output").innerHTML = pixSize;
+				switch (step) {
+					case 0:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							lerp(scaleY(offset, 1.5), p)
+						));
+						break;
+					case 1:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							lerp(
+								stack(
+									skewX(offset, a),
+									roundX(offset, pScale)
+								),
+								p
+							),
+							scaleY(offset, 1.5)
+						));
+						break;
+					case 2:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							lerp(scaleY(offset, 1.5), 1 - p)
+						));
+						break;
+					case 3:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							lerp(scaleX(offset, 1.5), p)
+						));
+						break;
+					case 4:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							lerp(
+								stack(
+									skewY(offset, b),
+									roundY(offset, pScale)
+								),
+								p
+							),
+							scaleX(offset, 1.5)
+						));
+						break;
+					case 5:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							skewY(offset, b),
+							roundY(offset, pScale),
+							lerp(scaleX(offset, 1.5), 1 - p)
+						));
+						break;
+					case 6:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							skewY(offset, b),
+							roundY(offset, pScale),
+							lerp(scaleY(offset, 1.5), p)
+						));
+						break;
+					case 7:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							skewY(offset, b),
+							roundY(offset, pScale),
+							lerp(
+								stack(
+									skewX(offset, a),
+									roundX(offset, pScale)
+								),
+								p
+							),
+							scaleY(offset, 1.5)
+						));
+						break;
+					case 8:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							skewY(offset, b),
+							roundY(offset, pScale),
+							skewX(offset, a),
+							roundX(offset, pScale),
+							lerp(scaleY(offset, 1.5), 1 - p)
+						));
+						break;
+					case 9:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							roundX(offset, pScale),
+							skewY(offset, b),
+							roundY(offset, pScale),
+							skewX(offset, a),
+							roundX(offset, pScale)
+						));
+						break;
+				}
+			}
+
+
+			function draw() {
+				document.getElementById("base-p").style.display = "none";
+				const theta = thetaSlider.value * π / 100;
+				context.clearRect(0, 0, 500, 500);
+				// steps:
+				// 1. break into rows
+				// 2. slide rows
+				// 3. recombine
+				// 4-6. same with columns
+				// 7-9. rows again
+				const pp = pSlider.value / (100 / 9);
+				const step = Math.floor(pp);
+				const p = pp % 1;
+				const pixSize = zoomSlider.value / 4,
+					pScale = pixSize;
+				const offset = 250;
+				const base = scale(8, offset, pScale);
+				const a = Math.tan(theta / 2);
+				const b = -Math.sin(theta);
+				document.getElementById("theta-output").innerHTML = `${theta / π}π`;
+				document.getElementById("p-output").innerHTML = step + p;
+				document.getElementById("zoom-output").innerHTML = pixSize;
+				switch (step) {
+					case 0:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							lerp(scaleY(offset, 1.5), p)
+						));
+						break;
+					case 1:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							lerp(skewX(offset, a), p),
+							scaleY(offset, 1.5)
+						));
+						break;
+					case 2:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							lerp(scaleY(offset, 1.5), 1 - p)
+						));
+						break;
+					case 3:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							lerp(scaleX(offset, 1.5), p)
+						));
+						break;
+					case 4:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							lerp(skewY(offset, b), p),
+							scaleX(offset, 1.5)
+						));
+						break;
+					case 5:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							skewY(offset, b),
+							lerp(scaleX(offset, 1.5), 1 - p)
+						));
+						break;
+					case 6:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							skewY(offset, b),
+							lerp(scaleY(offset, 1.5), p)
+						));
+						break;
+					case 7:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							skewY(offset, b),
+							lerp(skewX(offset, a), p),
+							scaleY(offset, 1.5)
+						));
+						break;
+					case 8:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							skewY(offset, b),
+							skewX(offset, a),
+							lerp(scaleY(offset, 1.5), 1 - p)
+						));
+						break;
+					case 9:
+						drawImage(context, pix, pixSize, stack(
+							base,
+							skewX(offset, a),
+							skewY(offset, b),
+							skewX(offset, a),
+						));
+						break;
+				}
+			}
+
+			pSlider.addEventListener('input', draw);
+			basePSlider.addEventListener('input', draw);
+			thetaSlider.addEventListener('input', draw);
+			zoomSlider.addEventListener('input', draw);
+			draw();
 		})();
 	</script>
 </body>
