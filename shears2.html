@@ -52,11 +52,80 @@
 			const d = pixelSize / 2;
 			pixels.forEach((row, y) =>
 				row.forEach((colour, x) => {
-					const pos = positioner(x, y);
+					const pos = positioner({ x, y });
 					context.fillStyle = colour;
 					context.fillRect(pos.x - d, pos.y - d, pixelSize, pixelSize);
 				})
 			);
+		}
+
+		function scale(sourceOffset, destOffset, scale) {
+			return ({ x, y }) => ({
+				x: destOffset + (x - sourceOffset) * scale,
+				y: destOffset + (y - sourceOffset) * scale
+			});
+		}
+
+		function skewX(centreY, ratio) {
+			return ({ x, y }) => ({
+				x: x + (y - centreY) * ratio,
+				y
+			});
+		}
+
+		function skewY(centreX, ratio) {
+			return ({ x, y }) => ({
+				x,
+				y: y + (x - centreX) * ratio
+			});
+		}
+
+		function roundX(offset, unit) {
+			return ({ x, y }) => ({
+				x: offset + unit * Math.floor((x - offset) / unit),
+				y
+			});
+		}
+
+		function lerp(transform, p) {
+			return i => {
+				const f = transform(i);
+				const q = 1 - p;
+				return {
+					x: i.x * q + f.x * p,
+					y: i.y * q + f.y * p
+				};
+			};
+		}
+
+		function lerp2(transformA, transformB, p) {
+			return input => {
+				const i = transformA(input);
+				const f = transformB(input);
+				const q = 1 - p;
+				return {
+					x: i.x * q + f.x * p,
+					y: i.y * q + f.y * p
+				};
+			};
+		}
+
+		function rotate(centreX, centreY, theta) {
+			const sin = Math.sin(theta);
+			const cos = Math.cos(theta);
+			return ({ x, y }) => {
+				const dx = x - centreX;
+				const dy = y - centreY;
+				return {
+					x: centreX + dx * cos + dy * sin,
+					y: centreY + dy * cos - dx * sin
+				};
+			};
+		}
+
+		function stack(...transforms) {
+			console.log(transforms);
+			return input => transforms.reduce((a, n) => n(a), input);
 		}
 
 		(async function() {
@@ -65,7 +134,24 @@
 			const canvas = document.getElementById('canvas');
 			const context = canvas.getContext('2d');
 			console.log(pix);
-			drawImage(context, pix, 25, (x, y) => ({ x: 250 + (x - 8) * 26, y: 250 + (y - 8) * 26 }))
+
+			// drawImage(context, pix, 25, scale(8, 250, 28));
+
+			// drawImage(context, pix, 25, stack(
+			// 	scale(8, 250, 28),
+			// 	lerp(
+			// 		stack(
+			// 			skewX(250, -0.3),
+			// 			roundX(250, 28)
+			// 		),
+			// 		0.5
+			// 	)
+			// ));
+
+			drawImage(context, pix, 15, stack(
+				scale(8, 250, 20),
+				rotate(250, 250, Math.PI / 6)
+			));
 		})();
 	</script>
 </body>
