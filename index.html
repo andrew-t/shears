@@ -4,369 +4,641 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>rotation with three shears</title>
-	<style type="text/css">
-		label {
-			display: flex;
-		}
-
-		label span {
-			flex: 0 0 10em;
-		}
-
-		label input {
-			flex: 1 0 1em;
-		}
-	</style>
 </head>
 <body>
-	<canvas id="canvas" width="500" height="500"></canvas>
-	<label id="sprite">
-		<span>Sprite</span>
-		<select id="sprite-select">
-			<option value="mario">Small Mario (SMB1, NES, 16x16)</option>
-			<option value="link">Link (Zelda, SNES, 22x22)</option>
-			<option value="yoshi">Yoshi (Yoshi's Island, SNES, 30x30)</option>
-			<option value="sonic">Sonic (Sonic Mania, 40x40)</option>
-			<option value="ring-on-chain">Ring On Chain (MathsJam, 2020, 26x26)</option>
-			<option value="zoombini">Zoombini (Zoombinis, 42x42)</option>
-			<option value="jim">Earthworm Jim (SNES, 59x59)</option>
-			<option value="ryu">Ryu (Street Fighter, 89x89)</option>
-		</select>
-	</label>
-	<label id="mode">
-		<span>Mode</span>
-		<select id="mode-select">
-			<option value="comparison">Compare true rotation to three-shears rotation</option>
-			<option value="shears">Apply three-shears rotation step by step</option>
-			<option value="shears-unrounded">Apply three-shears rotation without rounding</option>
-		</select>
-	</label>
-	<label id="theta">
-		<span>Angle</span>
-		<input id="theta-slider" type="range" min="-100" max="100">
-		<span id="theta-output"></span>
-	</label>
-	<label id="p">
-		<span>Lerp</span>
-		<input id="p-slider" type="range" min="0" max="100">
-		<span id="p-output"></span>
-	</label>
-	<label id="base-p">
-		<span>Global lerp</span>
-		<input id="base-p-slider" type="range" min="0" max="100" value="100">
-		<span id="base-p-output"></span>
-	</label>
-	<label id="zoom">
-		<span>Zoom</span>
-		<input id="zoom-slider" type="range" min="0" max="100">
-		<span id="zoom-output"></span>
-	</label>
-	<label id="border">
-		<span>Border</span>
-		<input id="border-slider" type="range" min="0" max="100">
-		<span id="border-output"></span>
-	</label>
-
 	<script type="text/javascript">
 		const π = Math.PI;
-		let lockX = false, lockY = false;
-
-		function loadImage(fn) {
-			return new Promise((resolve, reject) => {
-				const img = new Image();
-				img.addEventListener('load', () => resolve(img));
-				img.addEventListener('error', e => reject(e));
-				img.src = `sprites/${fn}.png`;
-			});
-		}
-
-		function hex(n) {
-			const str = n.toString(16);
-			if (str.length === 1) return '0' + str;
-			return str;
-		}
-
-		function col2hex(r, g, b, a) {
-			return `#${hex(r)}${hex(g)}${hex(b)}${hex(a)}`;
-		}
-
-		function img2pix(image) {
-			const canvas = document.createElement('canvas');
-			canvas.width = image.naturalWidth;
-			canvas.height = image.naturalHeight;
-			const context = canvas.getContext('2d');
-			context.drawImage(image, 0, 0);
-			const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-			// console.log(canvas.width, canvas.height, data.length)
-			const pixels = [];
-			let i = 0;
-			for (let y = 0; y < canvas.height; ++y) {
-				const row = [];
-				pixels.push(row);
-				for (let x = 0; x < canvas.width; ++x) {
-					// console.log(x, y, i)
-					row.push(col2hex(data[i++], data[i++], data[i++], data[i++]));
-				}
-			}
-			return pixels;
-		}
-
-		function drawImage(context, pixels, pixelSize, positioner) {
-			const d = pixelSize / 2;
-			pixels.forEach((row, y) =>
-				row.forEach((colour, x) => {
-					if (colour.endsWith('00')) return;
-					const pos = positioner({ x, y });
-					context.fillStyle = colour;
-					// if we don't want any border, force the draw to the nearest pixel boundary, so as not to have antialiasing artefacts between pixels
-					context.fillRect(
-						lockX ? Math.floor(pos.x - d) : pos.x - d,
-						lockY ? Math.floor(pos.y - d) : pos.y - d,
-						lockX ? Math.floor(pixelSize + pos.x - d) - Math.floor(pos.x - d) : pixelSize,
-						lockY ? Math.floor(pixelSize + pos.y - d) - Math.floor(pos.y - d) : pixelSize,
-					);
-				})
-			);
-		}
-
-		function translate(offsetX, offsetY = offsetX) {
-			return ({ x, y }) => ({ x: x + offsetX, y: y + offsetY });
-		}
-
-		function scale(scaleX, scaleY = scaleX) {
-			return ({ x, y }) => ({ x: x * scaleX, y: y * scaleY });
-		}
-
-		function roundX() {
-			return ({ x, y }) => ({ x: Math.floor(x), y });
-		}
-		function roundY() {
-			return ({ x, y }) => ({ x, y: Math.floor(y) });
-		}
-
-		function skewX(ratio) {
-			return ({ x, y }) => ({ x: x + y * ratio, y });
-		}
-		function skewY(ratio) {
-			return ({ x, y }) => ({ x, y: y + x * ratio });
-		}
-
-		function rotate(theta) {
-			const sin = Math.sin(theta);
-			const cos = Math.cos(theta);
-			return ({ x, y }) => ({
-				x: x * cos + y * sin,
-				y: y * cos - x * sin
-			});
-		}
-
-		function lerp(transformA, transformB, p) {
-			return input => {
-				const i = transformA(input);
-				const f = transformB(input);
-				const q = 1 - p;
-				return {
-					x: i.x * q + f.x * p,
-					y: i.y * q + f.y * p
-				};
-			};
-		}
-
-		function stack(...transforms) {
-			// console.log(transforms);
-			return input => transforms.reduce((a, n) => n(a), input);
-		}
-
-		function pass() {
-			return input => input;
-		}
-
-		const canvas = document.getElementById('canvas');
-		const context = canvas.getContext('2d');
-
-		let pix;
-
-		const pSlider = document.getElementById('p-slider');
-		const basePSlider = document.getElementById('base-p-slider');
-		const thetaSlider = document.getElementById('theta-slider');
-		const zoomSlider = document.getElementById('zoom-slider');
-		const borderSlider = document.getElementById('border-slider');
-		const modeDropdown = document.getElementById('mode-select');
-
-		function drawComparison(theta) {
-			document.getElementById("p-output").innerHTML = pSlider.value / 100;
-
-			const a = Math.tan(theta / 2);
-			const b = -Math.sin(theta);
-			return lerp(
-				rotate(theta),
-				stack(
-					skewX(a),
-					roundX(),
-					skewY(b),
-					roundY(),
-					skewX(a),
-					roundX()
-				),
-				pSlider.value / 100
-			)
-		}
-
-		function drawShears(theta, rounding) {
-			// steps:
-			// 1. break into rows
-			// 2. slide rows
-			// 3. recombine
-			// 4. pause
-			// 5-7. same with columns
-			// 8. pause
-			// 9-11. rows again
-			const pp = pSlider.value / (100 / 11.1);
-			const step = Math.floor(pp);
-			const p = pp % 1;
-			const a = Math.tan(theta / 2);
-			const b = -Math.sin(theta);
-			document.getElementById("p-output").innerHTML = step + p;
-			const rx = rounding ? roundX : pass,
-				ry = rounding ? roundY : pass;
-			switch (step) {
-				case 0:
-					if (p) lockY = false;
-					return lerp(pass(), scale(1, 1.5), p);
-				case 1:
-					lockY = false;
-					return stack(
-						lerp(pass(), stack(skewX(a), rx()), p),
-						scale(1, 1.5)
-					);
-				case 2:
-					lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						lerp(pass(), scale(1, 1.5), 1 - p)
-					);
-				case 3:
-					return stack(skewX(a), rx());
-				case 4:
-					if (p) lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						lerp(pass(), scale(1.5, 1), p)
-					);
-				case 5:
-					lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						lerp(pass(), stack(skewY(b), ry()), p),
-						scale(1.5, 1)
-					);
-				case 6:
-					lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						lerp(pass(), scale(1.5, 1), 1 - p)
-					);
-				case 7:
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry()
-					);
-				case 8:
-					if (p) lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						lerp(pass(), scale(1, 1.5), p)
-					);
-				case 9:
-					lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						lerp(pass(), stack(skewX(a), rx()), p),
-						scale(1, 1.5)
-					);
-				case 10:
-					lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						skewX(a),
-						rx(),
-						lerp(pass(), scale(1, 1.5), 1 - p)
-					);
-				case 11:
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						skewX(a),
-						rx()
-					);
-			}
-		}
-
-		function getTransforms() {
-			const theta = thetaSlider.value * π / 100;
-			document.getElementById("theta-output").innerHTML = `${theta / π}π`;
-
-			switch (modeDropdown.value) {
-				case 'comparison': return drawComparison(theta);
-				case 'shears': return drawShears(theta, true);
-				case 'shears-unrounded': return drawShears(theta, false);
-			}
-		}
-
-		function draw() {
-			context.clearRect(0, 0, 500, 500);
-
-			const pixSize = zoomSlider.value / 4,
-				pScale = pixSize * (1 + borderSlider.value / 100);
-			document.getElementById("zoom-output").innerHTML = pixSize;
-			document.getElementById("border-output").innerHTML = pScale - pixSize;
-
-			document.getElementById("base-p-output").innerHTML = basePSlider.value / 100;
-
-			lockX = lockY = borderSlider.value == 0;
-
-			drawImage(context, pix, pixSize, stack(
-				translate(-(pix.length - 1) / 2),
-				lerp(pass(), getTransforms(), basePSlider.value / 100),
-				scale(pScale),
-				translate(canvas.width / 2)
-			));
-		}
-
-		pSlider.addEventListener('input', draw);
-		basePSlider.addEventListener('input', draw);
-		thetaSlider.addEventListener('input', draw);
-		zoomSlider.addEventListener('input', draw);
-		borderSlider.addEventListener('input', draw);
-		modeDropdown.addEventListener('change', draw);
-
-		const spriteDropdown = document.getElementById('sprite-select');
-		async function load() {
-			const image = await loadImage(spriteDropdown.value);
-			pix = img2pix(image);
-			draw();
-		}
-		spriteDropdown.addEventListener('change', load);
-		load();
 	</script>
+
+	<div id="controls">
+		<label id="slide">
+			<span>Slide</span>
+			<select id="slide-select">
+				<option value="title-card" selected>Title card</option>
+				<option value="normal-way">DEMO: normal way</option>
+				<option value="three-shears-1">DEMO: one shear</option>
+				<option value="proof">proof</option>
+				<option value="example">example</option>
+				<option value="three-shears-2">DEMO: one shear</option>
+			</select>
+		</label>
+		<button id="next">Next</button>
+		<label id="sprite">
+			<span>Sprite</span>
+			<select id="sprite-select">
+				<option value="mario" selected>Small Mario</option>
+				<option value="link">Link</option>
+				<option value="yoshi">Yoshi</option>
+				<option value="sonic">Sonic</option>
+				<option value="ring-on-chain">Ring On Chain</option>
+				<option value="zoombini">Zoombini</option>
+				<option value="jim">Earthworm Jim</option>
+				<option value="ryu">Ryu</option>
+			</select>
+		</label>
+		<label id="theta">
+			<span>Angle</span>
+			<input id="theta-slider" type="range" min="-100" max="100" value="0">
+		</label>
+		<style>
+			body {
+				display: flex;
+				flex-direction: column;
+				padding: 0;
+				margin: 0;
+				justify-content: stretch;
+				align-items: stretch;
+				min-height: 100vh;
+				height: 100vh;
+				overflow: hidden;
+			}
+			body > * {
+				flex-grow: 1;
+				padding: 1rem;
+				overflow: auto;
+			}
+			#controls {
+				background: #888;
+				flex-grow: 0;
+				z-index: 1000;
+			}
+			input[type=range] {
+				height: 0.5rem;
+			}
+			#controls label span {
+				font-size: 0;
+			}
+		</style>
+		<script type="text/javascript">
+			let θ = 0;
+			const onChangeTheta = (() => {
+				const thetaSlider = document.getElementById('theta-slider');
+				thetaSlider.value = 0;
+				const listeners = [];
+				thetaSlider.addEventListener("input", () => {
+					θ = parseFloat(thetaSlider.value) * π / 100;
+					for (const callback of listeners) callback();
+				});
+				return function onChangeTheta(callback) {
+					listeners.push(callback);
+					callback();
+				}
+			})();
+
+			const onLoadImage = (() => {
+				const select = document.getElementById("sprite-select");
+				let img;
+				function loadImage() {
+					img = null;
+					const i = new Image();
+					i.addEventListener('load', () => {
+						img = i;
+						for (const callback of listeners) callback(img);
+					});
+					i.addEventListener('error', console.error);
+					i.src = `sprites/${select.value}.png`;
+				}
+				loadImage();
+				select.addEventListener("change", loadImage);
+				const listeners = [];
+				return function onLoadImage(callback) {
+					listeners.push(callback);
+					if (img) callback(img);
+				}
+			})();
+		</script>
+	</div>
+
+	<div id="title-card"><div id="title-card-inset" class="rotating">
+		<h1>Rotation with three shears</h1>
+		<span>Andrew 👋</span>
+		<style>
+			#title-card {
+				padding: 5rem;
+			}
+			#title-card-inset {
+				box-sizing: border-box;
+				border: .5rem solid black;
+				background-size: 40px 40px;
+				background-image:
+					linear-gradient(to right, #88f 1px, transparent 1px),
+					linear-gradient(to bottom, #88f 1px, #fff 1px);
+				background-repeat: repeat;
+				background-position: 50% 50%;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
+				font-size: 6vmin;
+				font-family: sans-serif;
+			}
+		</style>
+	</div></div>
+
+	<style>
+		.canvas-container {
+			container: canvascontainer / size;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+		}
+		.canvas-container canvas {
+ 			height: 100%;
+		}
+	</style>
+
+	<div id="normal-way">
+		<div class="canvas-container">
+			<canvas id="nw-canvas" width="500" height="500"></canvas>
+		</div>
+		<label id="zoom">
+			<span>Zoom</span>
+			<input id="nw-zoom-slider" type="range" min="0" max="100" value="100">
+		</label>
+		<label id="opacity">
+			<span>Underlay opacity</span>
+			<input id="nw-opacity-slider" type="range" min="0" max="100" value="30">
+		</label>
+		<style>
+			#normal-way {
+				display: flex;
+				flex-direction: column;
+				justify-content: stretch;
+				align-items: center;
+			}
+			#normal-way > .canvas-container { flex: 1em 1 1; }
+			#normal-way label { flex: auto 0 0; }
+		</style>
+		<script type="text/javascript">
+			(() => {
+				const canvas = document.getElementById('nw-canvas');
+				const context = canvas.getContext('2d');
+				const zoomSlider = document.getElementById('nw-zoom-slider');
+				const opacitySlider = document.getElementById('nw-opacity-slider');
+				let width, height, pix;
+
+				zoomSlider.addEventListener('input', draw);
+				opacitySlider.addEventListener('input', draw);
+				onLoadImage(load);
+				onChangeTheta(draw);
+
+				async function load(image) {
+					width = image.naturalWidth;
+					height = image.naturalHeight;
+					const canvas = document.createElement('canvas');
+					canvas.width = width;
+					canvas.height = height;
+					const ctx = canvas.getContext('2d');
+					ctx.drawImage(image, 0, 0);
+					const { data } = ctx.getImageData(0, 0, width, height);
+					pix = (x, y) => {
+						if (x < 0 || x >= width || y < 0 || y >= height) return '#0000';
+						const i = (x + y * width) * 4;
+						return '#' + [...data.slice(i, i + 4)].map((n) => {
+							const h = n.toString(16);
+							return n < 16 ? `0${h}` : h;
+						}).join('');
+					};
+					draw();
+				}
+
+				function draw() {
+					context.clearRect(0, 0, 500, 500);
+
+					context.save();
+					context.translate(250, 250);
+					const scale = 1.5 * 250 / Math.max(width, height);
+					context.scale(scale, scale);
+
+					context.save();
+					const opacity = opacitySlider.value / 100;
+					context.globalAlpha = zoomSlider.value > 90
+						? opacity - (zoomSlider.value - 90) * opacity / 10
+						: opacity;
+					context.rotate(θ);
+					for (let x = 0; x < width; ++x)
+						for (let y = 0; y < height; ++y) {
+							context.fillStyle = pix(x, y);
+							context.fillRect(x - width / 2, y - height / 2, 1, 1);
+						}
+					context.restore();
+
+					const pxSize = zoomSlider.value / 100 + 0.02;
+					const s = Math.sin(θ), c = Math.cos(θ);
+					for (let x = -width; x < width * 2; ++x)
+						for (let y = -height; y < height * 2; ++y) {
+							const xx = x + 0.5 - width / 2, yy = y + 0.5 - height / 2;
+							context.fillStyle = pix(
+								Math.floor(xx * c + yy * s + width / 2),
+								Math.floor(yy * c - xx * s + height / 2)
+							);
+							context.fillRect(
+								x + 0.5 - pxSize / 2 - width / 2,
+								y + 0.5 - pxSize / 2 - height / 2,
+								pxSize,
+								pxSize
+							);
+						}
+
+					context.restore();
+				}
+			})();
+		</script>
+	</div>
+
+	<div id="three-shears">
+		<div class="canvas-container">
+			<canvas id="ts-canvas" width="500" height="500"></canvas>
+		</div>
+		<label id="p">
+			<span>Lerp</span>
+			<input id="p-slider" type="range" min="0" max="100" value="0">
+		</label>
+		<label id="zoom">
+			<span>Zoom</span>
+			<input id="ts-zoom-slider" type="range" min="0" max="100">
+		</label>
+		<label id="border">
+			<span>Border</span>
+			<input id="border-slider" type="range" min="0" max="100" value="0">
+		</label>
+
+		<script type="text/javascript">
+			(() => {
+				let lockX = false, lockY = false;
+
+				function hex(n) {
+					const str = n.toString(16);
+					if (str.length === 1) return '0' + str;
+					return str;
+				}
+
+				function col2hex(r, g, b, a) {
+					return `#${hex(r)}${hex(g)}${hex(b)}${hex(a)}`;
+				}
+
+				function img2pix(image) {
+					const canvas = document.createElement('canvas');
+					canvas.width = image.naturalWidth;
+					canvas.height = image.naturalHeight;
+					const context = canvas.getContext('2d');
+					context.drawImage(image, 0, 0);
+					const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+					// console.log(canvas.width, canvas.height, data.length)
+					const pixels = [];
+					let i = 0;
+					for (let y = 0; y < canvas.height; ++y) {
+						const row = [];
+						pixels.push(row);
+						for (let x = 0; x < canvas.width; ++x) {
+							// console.log(x, y, i)
+							row.push(col2hex(data[i++], data[i++], data[i++], data[i++]));
+						}
+					}
+					return pixels;
+				}
+
+				function drawImage(context, pixels, pixelSize, positioner) {
+					const d = pixelSize / 2;
+					pixels.forEach((row, y) =>
+						row.forEach((colour, x) => {
+							if (colour.endsWith('00')) return;
+							const pos = positioner({ x, y });
+							context.fillStyle = colour;
+							// if we don't want any border, force the draw to the nearest pixel boundary, so as not to have antialiasing artefacts between pixels
+							context.fillRect(
+								lockX ? Math.floor(pos.x - d) : pos.x - d,
+								lockY ? Math.floor(pos.y - d) : pos.y - d,
+								lockX ? Math.floor(pixelSize + pos.x - d) - Math.floor(pos.x - d) : pixelSize,
+								lockY ? Math.floor(pixelSize + pos.y - d) - Math.floor(pos.y - d) : pixelSize,
+							);
+						})
+					);
+				}
+
+				function translate(offsetX, offsetY = offsetX) {
+					return ({ x, y }) => ({ x: x + offsetX, y: y + offsetY });
+				}
+
+				function scale(scaleX, scaleY = scaleX) {
+					return ({ x, y }) => ({ x: x * scaleX, y: y * scaleY });
+				}
+
+				function roundX() {
+					return ({ x, y }) => ({ x: Math.floor(x), y });
+				}
+				function roundY() {
+					return ({ x, y }) => ({ x, y: Math.floor(y) });
+				}
+
+				function skewX(ratio) {
+					return ({ x, y }) => ({ x: x + y * ratio, y });
+				}
+				function skewY(ratio) {
+					return ({ x, y }) => ({ x, y: y + x * ratio });
+				}
+
+				function rotate(theta) {
+					const sin = Math.sin(theta);
+					const cos = Math.cos(theta);
+					return ({ x, y }) => ({
+						x: x * cos + y * sin,
+						y: y * cos - x * sin
+					});
+				}
+
+				function lerp(transformA, transformB, p) {
+					return input => {
+						const i = transformA(input);
+						const f = transformB(input);
+						const q = 1 - p;
+						return {
+							x: i.x * q + f.x * p,
+							y: i.y * q + f.y * p
+						};
+					};
+				}
+
+				function stack(...transforms) {
+					// console.log(transforms);
+					return input => transforms.reduce((a, n) => n(a), input);
+				}
+
+				function pass() {
+					return input => input;
+				}
+
+				const canvas = document.getElementById('ts-canvas');
+				const context = canvas.getContext('2d');
+
+				let pix;
+
+				const pSlider = document.getElementById('p-slider');
+				const zoomSlider = document.getElementById('ts-zoom-slider');
+				const borderSlider = document.getElementById('border-slider');
+
+				function drawShears() {
+					// steps:
+					// 1. break into rows
+					// 2. slide rows
+					// 3. recombine
+					// 4. pause
+					// 5-7. same with columns
+					// 8. pause
+					// 9-11. rows again
+					const pp = pSlider.value / (100 / 11.1);
+					const step = Math.floor(pp);
+					const p = pp % 1;
+					const a = Math.tan(θ / 2);
+					const b = -Math.sin(θ);
+					console.log({pp,step,p,a,b})
+					switch (step) {
+						case 0:
+							if (p) lockY = false;
+							return lerp(pass(), scale(1, 1.5), p);
+						case 1:
+							lockY = false;
+							return stack(
+								lerp(pass(), stack(skewX(a), roundX()), p),
+								scale(1, 1.5)
+							);
+						case 2:
+							lockY = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								lerp(pass(), scale(1, 1.5), 1 - p)
+							);
+						case 3:
+							return stack(skewX(a), roundX());
+						case 4:
+							if (p) lockX = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								lerp(pass(), scale(1.5, 1), p)
+							);
+						case 5:
+							lockX = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								lerp(pass(), stack(skewY(b), roundY()), p),
+								scale(1.5, 1)
+							);
+						case 6:
+							lockX = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY(),
+								lerp(pass(), scale(1.5, 1), 1 - p)
+							);
+						case 7:
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY()
+							);
+						case 8:
+							if (p) lockY = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY(),
+								lerp(pass(), scale(1, 1.5), p)
+							);
+						case 9:
+							lockY = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY(),
+								lerp(pass(), stack(skewX(a), roundX()), p),
+								scale(1, 1.5)
+							);
+						case 10:
+							lockY = false;
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY(),
+								skewX(a),
+								roundX(),
+								lerp(pass(), scale(1, 1.5), 1 - p)
+							);
+						case 11:
+							return stack(
+								skewX(a),
+								roundX(),
+								skewY(b),
+								roundY(),
+								skewX(a),
+								roundX()
+							);
+					}
+				}
+
+				function draw() {
+					context.clearRect(0, 0, 500, 500);
+
+					const pixSize = zoomSlider.value / 4,
+						pScale = pixSize * (1 + borderSlider.value / 100);
+
+					lockX = lockY = borderSlider.value == 0;
+
+					drawImage(context, pix, pixSize, stack(
+						translate(-(pix.length - 1) / 2),
+						drawShears(),
+						scale(pScale),
+						translate(canvas.width / 2)
+					));
+				}
+
+				pSlider.addEventListener('input', draw);
+				zoomSlider.addEventListener('input', draw);
+				borderSlider.addEventListener('input', draw);
+				onLoadImage(img => {
+					pix = img2pix(img);
+					draw();
+				});
+				onChangeTheta(() => {
+					if (pix) draw();
+				});
+			})();
+		</script>
+		<style>
+			#three-shears {
+				display: flex;
+				flex-direction: column;
+				justify-content: stretch;
+				align-items: center;
+			}
+			#three-shears > .canvas-container { flex: 1em 1 1; }
+			#three-shears label { flex: auto 0 0; }
+		</style>
+	</div>
+
+	<div id="proof">
+		<img src="proof.png">
+		<style type="text/css">
+			#proof {
+				overflow: auto;
+				padding: 0;
+				height: 1rem;
+				text-align: center;
+			}
+
+			#proof img {
+				max-width: 100vmin;
+			}
+		</style>
+	</div>
+
+	<div id="example" class="rotating">
+		<style type="text/css">
+			#example {
+				background-image: url('finite-group.png');
+				background-position: 50% 50%;
+				background-size: 75%;
+				background-repeat: no-repeat;
+			}
+		</style>
+	</div>
+
+	<!-- slide management stuff -->
+	<script type="text/javascript">
+		(() => {
+			const slideSelect = document.getElementById("slide-select");
+			const slides = [...document.body.children].filter(x => x.id !== 'controls');
+			const options = [...slideSelect.children].map(x => x.value);
+			function update() {
+				for (const slide of slides)
+					slide.classList[slideSelect.value.startsWith(slide.id) ? "remove" : "add"]("hidden");
+			}
+			function next() {
+				slideSelect.value =
+					options[options.indexOf(slideSelect.value) + 1]
+						?? options[options.length - 1];
+				update();
+			}
+			slideSelect.addEventListener("change", update);
+			document.getElementById("next").addEventListener("click", next);
+			window.addEventListener("keydown", (e) => {
+				if (e.key === " ") {
+					e.preventDefault();
+					next();
+				}
+			})
+			update();
+		})();
+	</script>
+	<style>
+		.hidden {
+			opacity: 0 !important;
+			pointer-events: none !important;
+			height: 0 !important;
+			flex: 0 0 0 !important;
+			padding: 0 !important;
+			overflow: hidden !important;
+		}
+	</style>
+
+	<!-- css-transform animation for the rotation thing -->
+	<style>
+		.rotating {
+			--theta: 40deg;
+			--x-skew: 20deg;
+			--y-skew: -32.73deg;
+			animation: shears 10s infinite;
+		}
+		.hidden .rotating,
+		.hidden.rotating {
+			animation: none;
+		}
+		@keyframes shears {
+			from { transform:
+				rotate(0)
+				skewX(0)
+				skewY(0)
+				skewX(0);
+			}
+			20% { transform:
+				rotate(0)
+				skewX(0)
+				skewY(0)
+				skewX(var(--x-skew));
+			}
+			40% { transform:
+				rotate(0)
+				skewX(0)
+				skewY(var(--y-skew))
+				skewX(var(--x-skew));
+			}
+			60% { transform:
+				rotate(0)
+				skewX(var(--x-skew))
+				skewY(var(--y-skew))
+				skewX(var(--x-skew));
+			}
+			80% { transform:
+				rotate(var(--theta))
+				skewX(var(--x-skew))
+				skewY(var(--y-skew))
+				skewX(var(--x-skew));
+			}
+			to { transform:
+				rotate(var(--theta))
+				skewX(var(--x-skew))
+				skewY(var(--y-skew))
+				skewX(var(--x-skew));
+			}
+		}
+	</style>
 </body>
 </html>
