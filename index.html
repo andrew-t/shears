@@ -19,7 +19,8 @@
 				<option value="three-shears-1">DEMO: one shear</option>
 				<option value="proof">proof</option>
 				<option value="example">example</option>
-				<option value="three-shears-2">DEMO: one shear</option>
+				<option value="three-shears-2">DEMO: three shears</option>
+				<option value="follow-me">outro</option>
 			</select>
 		</label>
 		<button id="next">Next</button>
@@ -115,6 +116,7 @@
 		<style>
 			#title-card {
 				padding: 5rem;
+				overflow: hidden;
 			}
 			#title-card-inset {
 				box-sizing: border-box;
@@ -131,6 +133,7 @@
 				flex-direction: column;
 				font-size: 6vmin;
 				font-family: sans-serif;
+				height: 100%;
 			}
 		</style>
 	</div></div>
@@ -550,6 +553,36 @@
 			}
 		</style>
 	</div>
+
+	<div id="follow-me"><div id="follow-me-inset" class="rotating">
+		<h1>Follow me on X</h1>
+		<span>where X = Mastodon</span>
+		<span>@andrewt@mathstodon.xyz</span>
+		<span>andrewt.net</span>
+		<style>
+			#follow-me {
+				padding: 5rem;
+				overflow: hidden;
+			}
+			#follow-me-inset {
+				box-sizing: border-box;
+				border: .5rem solid black;
+				background-size: 40px 40px;
+				background-image:
+					linear-gradient(to right, #88f 1px, transparent 1px),
+					linear-gradient(to bottom, #88f 1px, #fff 1px);
+				background-repeat: repeat;
+				background-position: 50% 50%;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
+				font-size: 6vmin;
+				font-family: sans-serif;
+				height: 100%;
+			}
+		</style>
+	</div></div>
 
 	<!-- slide management stuff -->
 	<script type="text/javascript">
