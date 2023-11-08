@@ -259,7 +259,7 @@
 		</label>
 		<label id="zoom">
 			<span>Zoom</span>
-			<input id="ts-zoom-slider" type="range" min="0" max="100">
+			<input id="ts-zoom-slider" type="range" min="0" max="100" value="65">
 		</label>
 		<label id="border">
 			<span>Border</span>
@@ -394,7 +394,6 @@
 					const p = pp % 1;
 					const a = Math.tan(θ / 2);
 					const b = -Math.sin(θ);
-					console.log({pp,step,p,a,b})
 					switch (step) {
 						case 0:
 							if (p) lockY = false;
