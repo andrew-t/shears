@@ -5,6 +5,11 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>rotation with three shears</title>
 	<style type="text/css">
+		body {
+			background: black;
+			color: white;
+		}
+
 		label {
 			display: flex;
 		}
@@ -212,104 +217,48 @@
 			)
 		}
 
-		function drawShears(theta, rounding) {
+		function drawShears(θ, rounding) {
 			// steps:
-			// 1. break into rows
-			// 2. slide rows
-			// 3. recombine
-			// 4. pause
-			// 5-7. same with columns
-			// 8. pause
-			// 9-11. rows again
-			const pp = pSlider.value / (100 / 11.1);
+			// 0. slide rows
+			// 1. wait
+			// 2. slide columns
+			// 3. wait
+			// 4. slide rows
+			// 5. wait
+			const pp = pSlider.value / (100 / 5.1);
 			const step = Math.floor(pp);
 			const p = pp % 1;
-			const a = Math.tan(theta / 2);
-			const b = -Math.sin(theta);
-			document.getElementById("p-output").innerHTML = step + p;
+			const a = Math.tan(θ / 2);
+			const b = -Math.sin(θ);
 			const rx = rounding ? roundX : pass,
 				ry = rounding ? roundY : pass;
 			switch (step) {
 				case 0:
-					if (p) lockY = false;
-					return lerp(pass(), scale(1, 1.5), p);
+					return lerp(pass(), stack(skewX(a), rx()), p);
 				case 1:
-					lockY = false;
-					return stack(
-						lerp(pass(), stack(skewX(a), rx()), p),
-						scale(1, 1.5)
-					);
+					return stack(skewX(a), rx());
 				case 2:
-					lockY = false;
 					return stack(
 						skewX(a),
 						rx(),
-						lerp(pass(), scale(1, 1.5), 1 - p)
+						lerp(pass(), stack(skewY(b), ry()), p)
 					);
 				case 3:
-					return stack(skewX(a), rx());
-				case 4:
-					if (p) lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						lerp(pass(), scale(1.5, 1), p)
-					);
-				case 5:
-					lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						lerp(pass(), stack(skewY(b), ry()), p),
-						scale(1.5, 1)
-					);
-				case 6:
-					lockX = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						lerp(pass(), scale(1.5, 1), 1 - p)
-					);
-				case 7:
 					return stack(
 						skewX(a),
 						rx(),
 						skewY(b),
 						ry()
 					);
-				case 8:
-					if (p) lockY = false;
+				case 4:
 					return stack(
 						skewX(a),
 						rx(),
 						skewY(b),
 						ry(),
-						lerp(pass(), scale(1, 1.5), p)
+						lerp(pass(), stack(skewX(a), rx()), p)
 					);
-				case 9:
-					lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						lerp(pass(), stack(skewX(a), rx()), p),
-						scale(1, 1.5)
-					);
-				case 10:
-					lockY = false;
-					return stack(
-						skewX(a),
-						rx(),
-						skewY(b),
-						ry(),
-						skewX(a),
-						rx(),
-						lerp(pass(), scale(1, 1.5), 1 - p)
-					);
-				case 11:
+				case 5:
 					return stack(
 						skewX(a),
 						rx(),
